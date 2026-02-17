@@ -1,0 +1,12 @@
+{
+  "name": "datanetra-msme-hub",
+  "private": true,
+  "description": "DataNetra MSME Hub — frontend + backend",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && node src/server.js",
+    "start:prod": "npm run build && NODE_ENV=production npm run start",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev"
+  }
+}
