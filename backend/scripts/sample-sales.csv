@@ -1,0 +1,13 @@
+date,product,sales,region,payment_mode
+2024-01-15,Packaged Snacks,85000,Chennai,UPI
+2024-01-20,Beverages,42000,Mumbai,Card
+2024-02-10,Packaged Snacks,92000,Chennai,UPI
+2024-02-14,Personal Care,38000,Delhi,Cash
+2024-03-05,Beverages,51000,Chennai,UPI
+2024-03-12,Packaged Snacks,110000,Mumbai,Card
+2024-04-08,Dairy,45000,Delhi,UPI
+2024-04-22,Packaged Snacks,130000,Chennai,Card
+2024-05-11,Beverages,58000,Mumbai,UPI
+2024-05-25,Personal Care,42000,Chennai,Cash
+2024-06-03,Packaged Snacks,140000,Chennai,UPI
+2024-06-18,Dairy,52000,Delhi,Card
