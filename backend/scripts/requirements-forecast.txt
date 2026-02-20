@@ -1,0 +1,3 @@
+# Optional: for Prophet-based forecast (better retail seasonality). Install with: pip install -r requirements-forecast.txt
+pandas>=1.3.0
+prophet>=1.1.0

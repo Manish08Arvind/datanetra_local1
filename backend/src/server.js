@@ -923,37 +923,74 @@ app.get('/analytics/datasets', authMiddleware, async (req, res) => {
   }
 });
 
-// Forecast endpoint: normalized linear trend model, accuracy from MAPE
+// Forecast endpoint: multi-model weekly forecast with accuracy-based selection
+// Supports same filters as dashboard: product, location (store/region), and dataset_id.
 app.get('/analytics/forecast', authMiddleware, async (req, res) => {
-  const params = { horizon_weeks: 4 };
+  const params = { horizon_weeks: 13 };
 
   try {
-    const { dataset_id } = req.query;
+    const { dataset_id, product, region, location } = req.query;
     const dsId = dataset_id ? parseInt(dataset_id, 10) : null;
+    const loc = location || region;
 
     let weekly_historical = [];
     try {
-      if (dsId) {
-        const r = await query(
-          `SELECT schema_json FROM uploaded_datasets WHERE id = $1 AND msme_user_id = $2`,
-          [dsId, req.user.userId]
-        );
-        const analysis = r.rows[0]?.schema_json?.analysis;
-        const cw = analysis?.cumulative_and_wow || [];
-        weekly_historical = (cw || []).map((w) => ({ week: w.weekLabel || w.weekKey, value: Number(w.value) || 0 }));
+      // Load analysis from chosen or latest dataset
+      const whereSql = dsId
+        ? `WHERE id = $1 AND msme_user_id = $2`
+        : `WHERE msme_user_id = $1 ORDER BY uploaded_at DESC LIMIT 1`;
+      const paramsArr = dsId ? [dsId, req.user.userId] : [req.user.userId];
+      const r = await query(
+        `SELECT schema_json FROM uploaded_datasets ${whereSql}`,
+        paramsArr
+      );
+      const analysis = r.rows[0]?.schema_json?.analysis;
+      if (analysis) {
+        const rawRows = Array.isArray(analysis.raw_rows) ? analysis.raw_rows : [];
+        if (rawRows.length > 0 && (product || loc)) {
+          // Filter at row level, then aggregate to weekly series for this product/location
+          let rows = rawRows;
+          if (product) {
+            const p = String(product).toLowerCase();
+            rows = rows.filter((row) => {
+              const rp = String(row.product || '').toLowerCase();
+              return rp === p || rp.includes(p);
+            });
+          }
+          if (loc) {
+            const rLoc = String(loc).toLowerCase();
+            rows = rows.filter((row) => {
+              const rr = String(row.region || '').toLowerCase();
+              return rr === rLoc || rr.includes(rLoc);
+            });
+          }
+          const byWeek = {};
+          for (const row of rows) {
+            const wk = row.weekKey || row.week || row.weekLabel;
+            if (!wk) continue;
+            const v = Number(row.value) || 0;
+            if (v <= 0) continue;
+            byWeek[wk] = (byWeek[wk] || 0) + v;
+          }
+          const weekKeys = Object.keys(byWeek).sort();
+          weekly_historical = weekKeys.map((wk) => ({
+            week: wk,
+            value: Math.round(byWeek[wk])
+          }));
+        } else {
+          // Fall back to pre-aggregated weekly series
+          const cw = analysis.cumulative_and_wow || [];
+          weekly_historical = (cw || []).map((w) => ({
+            week: w.weekLabel || w.weekKey,
+            value: Number(w.value) || 0
+          }));
+        }
       }
-      if (weekly_historical.length === 0) {
-        const r = await query(
-          `SELECT schema_json FROM uploaded_datasets WHERE msme_user_id = $1 ORDER BY uploaded_at DESC LIMIT 1`,
-          [req.user.userId]
-        );
-        const analysis = r.rows[0]?.schema_json?.analysis;
-        const cw = analysis?.cumulative_and_wow || [];
-        weekly_historical = (cw || []).map((w) => ({ week: w.weekLabel || w.weekKey, value: Number(w.value) || 0 }));
-      }
-    } catch (_) {}
+    } catch (e) {
+      console.error('Forecast: analysis load/filter error', e);
+    }
 
-    const result = runForecast(weekly_historical, params.horizon_weeks);
+    const result = await runForecast(weekly_historical, params.horizon_weeks);
 
     try {
       await query(
@@ -968,7 +1005,10 @@ app.get('/analytics/forecast', authMiddleware, async (req, res) => {
       accuracy: result.accuracy,
       weekly_historical: result.weekly_historical,
       weekly_forecast: result.weekly_forecast,
-      forecast: result.weekly_forecast
+      forecast: result.weekly_forecast,
+      forecast_lower: result.forecast_lower || null,
+      forecast_upper: result.forecast_upper || null,
+      insights: result.insights
     });
   } catch (err) {
     console.error(err);

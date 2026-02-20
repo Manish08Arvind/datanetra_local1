@@ -189,7 +189,7 @@ function ScatterChart({ data, width = 420, height = 240, xKey = 'x', yKey = 'y',
   );
 }
 
-function DualLineChart({ data, width = 400, height = 200, primaryKey = 'cumulative_sales', secondaryKey = 'wow_pct', labelKey = 'weekLabel' }) {
+function DualLineChart({ data, width = 400, height = 200, primaryKey = 'cumulative_sales', secondaryKey = 'wow_pct', labelKey = 'weekLabel', primaryLegend = 'Primary', secondaryLegend = 'WoW %' }) {
   const [hovered, setHovered] = useState(null);
   if (!data?.length) return null;
   const chartWidth = Math.max(width, Math.min(800, 320 + data.length * 24));
@@ -213,14 +213,16 @@ function DualLineChart({ data, width = 400, height = 200, primaryKey = 'cumulati
   const hoverPoint = hovered != null && data[hovered] ? (() => {
     const x = PAD.left + (hovered / n) * w;
     const y = PAD.top + h - (primary[hovered] / maxP) * h;
-    return { x, y, label: data[hovered][labelKey]?.slice(0, 10) || `#${hovered + 1}`, cum: primary[hovered], wow: secondary[hovered] };
+    return { x, y, label: data[hovered][labelKey]?.slice(0, 10) || `#${hovered + 1}`, primary: primary[hovered], secondary: secondary[hovered] };
   })() : null;
+  const maxXTicks = 8;
+  const step = Math.max(1, Math.ceil(data.length / maxXTicks));
   return (
     <div className="chart-scroll-wrap">
       <div className="chart-inner" style={{ position: 'relative' }}>
         {hoverPoint && (
           <div className="chart-tooltip" style={{ left: hoverPoint.x, top: hoverPoint.y - 8, transform: 'translate(-50%, -100%)' }}>
-            {hoverPoint.label}: Cumulative ₹{hoverPoint.cum.toLocaleString()}, WoW {hoverPoint.wow}%
+            {hoverPoint.label}: {primaryLegend} ₹{hoverPoint.primary.toLocaleString()}, {secondaryLegend} {hoverPoint.secondary}%
           </div>
         )}
         <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth} ${height}`} preserveAspectRatio="xMinYMid meet" className="chart-svg">
@@ -233,25 +235,38 @@ function DualLineChart({ data, width = 400, height = 200, primaryKey = 'cumulati
               onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)} />;
           })}
           {data.map((d, i) => (
-            <text key={i} x={PAD.left + (i / n) * w} y={height - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">{d[labelKey]?.slice(0, 7) || i + 1}</text>
+            i % step === 0
+              ? <text
+                  key={i}
+                  x={PAD.left + (i / n) * w}
+                  y={height - 8}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="#111827"
+                >
+                  {d[labelKey]?.slice(0, 7) || i + 1}
+                </text>
+              : null
           ))}
         </svg>
         <div className="chart-legend">
-          <span><span className="legend-swatch" style={{ background: '#38bdf8' }} /> Cumulative</span>
-          <span><span className="legend-swatch" style={{ background: '#f59e0b', borderBottom: '2px dashed #f59e0b' }} /> WoW %</span>
+          <span><span className="legend-swatch" style={{ background: '#38bdf8' }} /> {primaryLegend}</span>
+          <span><span className="legend-swatch" style={{ background: '#f59e0b', borderBottom: '2px dashed #f59e0b' }} /> {secondaryLegend}</span>
         </div>
       </div>
     </div>
   );
 }
 
-function ForecastLineChart({ historical = [], forecast = [], width = 400, height = 220 }) {
+function ForecastLineChart({ historical = [], forecast = [], forecastLower = [], forecastUpper = [], width = 400, height = 220 }) {
   const [hovered, setHovered] = useState(null);
   const combined = [...historical, ...forecast];
   if (!combined.length) return null;
   const chartWidth = Math.max(width, 320 + combined.length * 20);
   const values = combined.map((d) => Number(d.value) || 0);
-  const max = Math.max(...values, 1);
+  const withBounds = forecast.length && forecastLower.length === forecast.length && forecastUpper.length === forecast.length;
+  const maxVal = Math.max(...values, ...(withBounds ? forecastUpper : []), 1);
+  const max = maxVal;
   const w = chartWidth - PAD.left - PAD.right;
   const h = height - PAD.top - PAD.bottom;
   const n = combined.length - 1 || 1;
@@ -263,6 +278,15 @@ function ForecastLineChart({ historical = [], forecast = [], width = 400, height
   const histPoints = historical.length > 0 ? allPoints.slice(0, historical.length).map((p) => `${p.x},${p.y}`).join(' ') : '';
   const forecastStart = historical.length > 0 ? historical.length - 1 : 0;
   const forecastPoints = (forecast.length > 0 ? allPoints.slice(forecastStart) : []).map((p) => `${p.x},${p.y}`).join(' ');
+  let bandPath = '';
+  if (withBounds && forecast.length > 0) {
+    const lowerYs = forecastLower.map((v) => PAD.top + h - (Number(v) / max) * h);
+    const upperYs = forecastUpper.map((v) => PAD.top + h - (Number(v) / max) * h);
+    const xs = forecastLower.map((_, i) => allPoints[forecastStart + i]?.x ?? PAD.left + ((forecastStart + i) / n) * w);
+    const upperStr = xs.map((x, i) => `${x},${upperYs[i]}`).join(' ');
+    const lowerStr = [...xs].reverse().map((x, i) => `${x},${lowerYs[lowerYs.length - 1 - i]}`).join(' ');
+    bandPath = upperStr + ' ' + lowerStr;
+  }
   const hoverPoint = hovered != null && combined[hovered] ? { ...allPoints[hovered], label: combined[hovered].week || combined[hovered].date || `W${hovered + 1}`, value: Number(combined[hovered].value) || 0 } : null;
   return (
     <div className="chart-scroll-wrap">
@@ -273,6 +297,7 @@ function ForecastLineChart({ historical = [], forecast = [], width = 400, height
           </div>
         )}
         <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth} ${height}`} preserveAspectRatio="xMinYMid meet" className="chart-svg">
+          {bandPath && <polygon fill="rgba(52, 211, 153, 0.15)" stroke="none" points={bandPath} />}
           {histPoints && <polyline fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={histPoints} shapeRendering="geometricPrecision" />}
           {forecastPoints && <polyline fill="none" stroke="#34d399" strokeWidth="2" strokeDasharray="8,4" strokeLinecap="round" strokeLinejoin="round" points={forecastPoints} shapeRendering="geometricPrecision" />}
           {allPoints.map((p, i) => (
@@ -286,6 +311,7 @@ function ForecastLineChart({ historical = [], forecast = [], width = 400, height
         <div className="chart-legend">
           <span><span className="legend-swatch" style={{ background: '#38bdf8' }} /> Historical</span>
           <span><span className="legend-swatch" style={{ background: '#34d399', borderBottom: '2px dashed #34d399' }} /> Forecast</span>
+          {bandPath && <span><span className="legend-swatch" style={{ background: 'rgba(52, 211, 153, 0.4)' }} /> 95% interval</span>}
         </div>
       </div>
     </div>
@@ -426,6 +452,8 @@ export default function AnalyticsPage() {
   const [summaryError, setSummaryError] = useState(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastError, setForecastError] = useState(null);
+  const [forecastProduct, setForecastProduct] = useState('');
+  const [forecastLocation, setForecastLocation] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -462,6 +490,12 @@ export default function AnalyticsPage() {
     loadSummary(); // uses current filters state; dashboard updates from setSummary(res.data)
   };
 
+  // Refresh forecast when dataset changes (Apply/Reset handle filter changes)
+  useEffect(() => {
+    if (!summary || !summary.dataset_id) return;
+    loadForecast();
+  }, [summary?.dataset_id]);
+
   const scrollChatToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -492,12 +526,16 @@ export default function AnalyticsPage() {
     }
   };
 
-  const loadForecast = async () => {
+  const loadForecast = async (overrides) => {
     setForecastLoading(true);
     setForecastError(null);
+    const product = overrides?.product !== undefined ? overrides.product : forecastProduct;
+    const location = overrides?.location !== undefined ? overrides.location : forecastLocation;
     try {
       const params = new URLSearchParams();
       if (summary?.dataset_id) params.set('dataset_id', String(summary.dataset_id));
+      if (product) params.set('product', product);
+      if (location) params.set('location', location);
       const res = await api.get('/analytics/forecast' + (params.toString() ? '?' + params.toString() : ''));
       setForecast(res.data ?? null);
     } catch (err) {
@@ -582,6 +620,12 @@ export default function AnalyticsPage() {
   const top10ByVolume = Array.isArray(charts.top10_products_by_volume) ? charts.top10_products_by_volume : [];
   const priceVsQuantity = Array.isArray(charts.price_vs_quantity) ? charts.price_vs_quantity : [];
   const cumulativeAndWow = Array.isArray(charts.cumulative_and_wow) ? charts.cumulative_and_wow : [];
+  const monthlySalesAndMom = salesTrend.map((d, i) => ({
+    ...d,
+    mom_pct: i > 0 && (salesTrend[i - 1].value || 0) > 0
+      ? Math.round(((Number(d.value) || 0) - (salesTrend[i - 1].value || 0)) / (salesTrend[i - 1].value || 0) * 1000) / 10
+      : 0
+  }));
   const paymentBreakdown = Array.isArray(charts.payment_breakdown) ? charts.payment_breakdown : [];
   const maxProduct = productBreakdown.length ? Math.max(...productBreakdown.map((d) => Number(d.value) || 0)) : 1;
   const maxVolume = top10ByVolume.length ? Math.max(...top10ByVolume.map((d) => Number(d.volume) || 0)) : 1;
@@ -729,17 +773,18 @@ export default function AnalyticsPage() {
 
             <div className="dashboard-charts-grid">
             <div className="chart-card">
-              <h3>1. Daily sales trend</h3>
+              <h3>1. Monthly sales trend &amp; Month-over-month % change</h3>
               <div className="chart-container chart-container-line">
-                {(dailySalesTrend.length > 0 || salesTrend.length > 0) ? (
-                  <LineChart
-                    data={dailySalesTrend.length ? dailySalesTrend : salesTrend}
+                {monthlySalesAndMom.length > 0 ? (
+                  <DualLineChart
+                    data={monthlySalesAndMom}
                     width={400}
                     height={240}
-                    valueKey="value"
-                    labelKey={charts.daily_sales_trend?.length > 0 ? 'dateLabel' : 'month'}
-                    color="#38bdf8"
-                    legendLabel="Daily sales"
+                    primaryKey="value"
+                    secondaryKey="mom_pct"
+                    labelKey="month"
+                    primaryLegend="Monthly sales"
+                    secondaryLegend="MoM %"
                   />
                 ) : (
                   <p className="muted" style={{ padding: '2rem' }}>No trend data. Upload a dataset or adjust filters.</p>
@@ -787,7 +832,7 @@ export default function AnalyticsPage() {
             <div className="chart-card chart-card-spacing-top">
               <h3>6. Cumulative sales growth &amp; Week-over-week % change</h3>
               <div className="chart-container chart-container-line">
-                {cumulativeAndWow.length > 0 ? <DualLineChart data={cumulativeAndWow} width={400} height={200} primaryKey="cumulative_sales" secondaryKey="wow_pct" labelKey="weekLabel" /> : <p className="muted" style={{ padding: '2rem' }}>No weekly data.</p>}
+                {cumulativeAndWow.length > 0 ? <DualLineChart data={cumulativeAndWow} width={400} height={200} primaryKey="cumulative_sales" secondaryKey="wow_pct" labelKey="weekLabel" primaryLegend="Cumulative sales" secondaryLegend="WoW %" /> : <p className="muted" style={{ padding: '2rem' }}>No weekly data.</p>}
               </div>
             </div>
             </div>
@@ -808,7 +853,50 @@ export default function AnalyticsPage() {
             )}
             {forecast && (forecast.weekly_historical?.length > 0 || forecast.weekly_forecast?.length > 0) && (
               <div className="forecast forecast-section">
-                <h3>Sales forecast — weekly trend &amp; next 4 weeks</h3>
+                <h3>Sales forecast — weekly trend &amp; next 13 weeks</h3>
+                <div className="forecast-filters filters-bar">
+                  <label>
+                    Product (forecast)
+                    <select
+                      value={forecastProduct}
+                      onChange={(e) => setForecastProduct(e.target.value)}
+                    >
+                      <option value="">All products</option>
+                      {filterProducts.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Store (forecast)
+                    <select
+                      value={forecastLocation}
+                      onChange={(e) => setForecastLocation(e.target.value)}
+                    >
+                      <option value="">All locations</option>
+                      {filterLocations.map((loc) => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="forecast-filter-actions">
+                    <button type="button" className="btn-secondary" onClick={loadForecast} disabled={forecastLoading}>
+                      {forecastLoading ? 'Applying…' : 'Apply filters'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setForecastProduct('');
+                        setForecastLocation('');
+                        loadForecast({ product: '', location: '' });
+                      }}
+                      disabled={forecastLoading}
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                </div>
                 <div className="forecast-meta">
                   <span><strong>ML algorithm:</strong> {forecast.model_name || '—'}</span>
                   <span><strong>Accuracy:</strong> {forecast.accuracy ?? 'N/A'}</span>
@@ -817,11 +905,27 @@ export default function AnalyticsPage() {
                   <ForecastLineChart
                     historical={forecast.weekly_historical || []}
                     forecast={forecast.weekly_forecast || []}
+                    forecastLower={forecast.forecast_lower || []}
+                    forecastUpper={forecast.forecast_upper || []}
                     width={400}
                     height={240}
                   />
                 </div>
-                <p className="muted chart-desc">Solid line: historical weekly sales. Dotted line: forecast for next 4 weeks.</p>
+                <p className="muted chart-desc">Solid line: historical weekly sales. Dotted line: forecast for the next 13 weeks. Algorithm captures trend and seasonality (yearly and weekly) with lag and rolling features.</p>
+                {forecast.insights && (
+                  <div className="forecast-insights">
+                    <h4 className="forecast-insights-title">Forecast insights</h4>
+                    {Array.isArray(forecast.insights.bullets) ? (
+                      <ul className="forecast-insights-list">
+                        {forecast.insights.bullets.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="forecast-insights-text">{typeof forecast.insights === 'string' ? forecast.insights : JSON.stringify(forecast.insights)}</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </>
