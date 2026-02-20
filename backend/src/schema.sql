@@ -110,17 +110,17 @@ CREATE TABLE IF NOT EXISTS admin_users (
 );
 -- If table already exists without role column, run: ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'EMPLOYEE'; UPDATE admin_users SET role = 'ADMIN' WHERE role IS NULL;
 
--- Seed dummy MSME data
+-- Seed dummy MSME data (wholesaler-style: Traders/Enterprise; buyer-style: Ltd./Pvt Ltd.)
 INSERT INTO msme_master
 (udhayam_id, company_name, primary_owner, secondary_owner, gstin, business_type, location, mobile_number, email)
 VALUES
-('UDH001', 'Sai FMCG Traders', 'R. Kumar', 'M. Priya', '29ABCDE1234F1Z5', 'fmcg', 'Chennai', '7358739679', 'manishsarvind@gmail.com'),
-('UDH002', 'Metro Supermarket', 'S. Deepak', 'L. Rani', '29FGHIJ5678K2Z6', 'supermarket', 'Chennai', '9000011111', 'metro.supermarket@example.com'),
-('UDH003', 'Comfort Clothing', 'A. Meena', 'R. Shankar', '29KLMNO9012P3Z7', 'clothing', 'Coimbatore', '9000022222', 'comfort.clothing@example.com'),
-('UDH004', 'Spark Electronics', 'J. Vivek', 'S. Anitha', '29PQRST3456U4Z8', 'electronic', 'Bengaluru', '9000033333', 'spark.electronics@example.com'),
-('UDH005', 'GreenFresh FMCG', 'B. Ravi', 'T. Kavya', '29UVWXY7890Z5Z9', 'fmcg', 'Madurai', '9000044444', 'greenfresh@example.com'),
-('UDH006', 'Urban Wear', 'D. Nithya', 'V. Karthik', '29ABCDE5678F6Z0', 'clothing', 'Chennai', '9000055555', 'urbanwear@example.com'),
-('UDH007', 'City Supermart', 'G. Arjun', 'H. Divya', '29FGHIJ9012K7Z1', 'supermarket', 'Coimbatore', '9000066666', 'city.supermart@example.com'),
-('UDH008', 'Digital Hub Electronics', 'I. Sanjay', 'P. Rekha', '29KLMNO3456P8Z2', 'electronic', 'Madurai', '9000077777', 'digitalhub@example.com')
+('UDH001', 'Sai Traders', 'R. Kumar', 'M. Priya', '29ABCDE1234F1Z5', 'fmcg', 'Chennai', '7358739679', 'manishsarvind@gmail.com'),
+('UDH002', 'Metro Ltd.', 'S. Deepak', 'L. Rani', '29FGHIJ5678K2Z6', 'supermarket', 'Chennai', '9000011111', 'metro.supermarket@example.com'),
+('UDH003', 'Comfort Enterprise', 'A. Meena', 'R. Shankar', '29KLMNO9012P3Z7', 'clothing', 'Coimbatore', '9000022222', 'comfort.clothing@example.com'),
+('UDH004', 'Spark Distributors', 'J. Vivek', 'S. Anitha', '29PQRST3456U4Z8', 'electronic', 'Bengaluru', '9000033333', 'spark.electronics@example.com'),
+('UDH005', 'Green Pvt Ltd.', 'B. Ravi', 'T. Kavya', '29UVWXY7890Z5Z9', 'fmcg', 'Madurai', '9000044444', 'greenfresh@example.com'),
+('UDH006', 'Urban Ltd.', 'D. Nithya', 'V. Karthik', '29ABCDE5678F6Z0', 'clothing', 'Chennai', '9000055555', 'urbanwear@example.com'),
+('UDH007', 'City Wholesalers', 'G. Arjun', 'H. Divya', '29FGHIJ9012K7Z1', 'supermarket', 'Coimbatore', '9000066666', 'city.supermart@example.com'),
+('UDH008', 'Digital Pvt Ltd.', 'I. Sanjay', 'P. Rekha', '29KLMNO3456P8Z2', 'electronic', 'Madurai', '9000077777', 'digitalhub@example.com')
 ON CONFLICT (udhayam_id) DO NOTHING;
 

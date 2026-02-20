@@ -24,16 +24,25 @@ const BUSINESS_TYPES = ['fmcg', 'clothing', 'electronic', 'supermarket'];
 
 const COMPANY_PREFIXES = {
   fmcg: ['Sai', 'Green', 'Metro', 'Prime', 'Fresh', 'Sunrise', 'Bharat', 'Swadeshi', 'Annapurna', 'Prakash'],
-  clothing: ['Comfort', 'Urban', 'Style', 'Classic', 'Trendy', 'Royal', 'Elite', 'Fashion', 'Weave', 'Silk'],
+  clothing: ['Comfort', 'Urban', 'Style', 'Classic', 'Trendy', 'Royal', 'Elite', 'Fashion', 'Weave', 'Apex'],
   electronic: ['Spark', 'Digital', 'Tech', 'Smart', 'Power', 'Volt', 'Circuit', 'Logic', 'Pixel', 'Nexus'],
   supermarket: ['City', 'Metro', 'Daily', 'Mega', 'Super', 'Local', 'Neighbour', 'Quick', 'Easy', 'Value']
 };
 
-const COMPANY_SUFFIXES = {
-  fmcg: ['Traders', 'Foods', 'Distributors', 'Agency', 'Supplies', 'Mart', 'Store', 'Hub', 'Corp', 'Pvt Ltd'],
-  clothing: ['Wear', 'Textiles', 'Garments', 'Fashion', 'Apparel', 'Boutique', 'Store', 'House', 'Ltd', 'Co'],
-  electronic: ['Electronics', 'Devices', 'Solutions', 'Systems', 'Hub', 'World', 'Store', 'Labs', 'Pvt Ltd', 'Inc'],
-  supermarket: ['Supermarket', 'Mart', 'Store', 'Bazaar', 'Mall', 'Retail', 'Provisions', 'Hypermarket', 'Ltd', 'Co']
+// Wholesaler/supplier-style names: proper noun + Traders, Enterprise, etc. (no sector words like Textiles/Electronics)
+const WHOLESALER_SUFFIXES = {
+  fmcg: ['Traders', 'Enterprise', 'Distributors', 'Wholesalers', 'Supplies', 'Agency', 'Trading Co', 'Enterprises'],
+  clothing: ['Traders', 'Enterprise', 'Distributors', 'Wholesalers', 'Supplies', 'Agency', 'Trading Co', 'Enterprises'],
+  electronic: ['Traders', 'Enterprise', 'Distributors', 'Wholesalers', 'Supplies', 'Agency', 'Trading Co', 'Enterprises'],
+  supermarket: ['Traders', 'Enterprise', 'Distributors', 'Wholesalers', 'Supplies', 'Agency', 'Trading Co', 'Enterprises']
+};
+
+// Buyer-style names: proper noun + Ltd. or Pvt Ltd. only (no Mart, Store, Textiles, etc.)
+const BUYER_SUFFIXES = {
+  fmcg: ['Ltd.', 'Pvt Ltd.'],
+  clothing: ['Ltd.', 'Pvt Ltd.'],
+  electronic: ['Ltd.', 'Pvt Ltd.'],
+  supermarket: ['Ltd.', 'Pvt Ltd.']
 };
 
 const PRODUCTS_BY_TYPE = {
@@ -64,10 +73,12 @@ async function run() {
       for (let i = 0; i < toInsert; i++) {
         const n = count + i + 1;
         const udhayamId = `UDH${String(n).padStart(3, '0')}`;
-        const type = pick(BUSINESS_TYPES, n + i * 7);
+        const type = BUSINESS_TYPES[i % BUSINESS_TYPES.length];
         const location = pick(LOCATIONS, n + i * 11);
         const pre = pick(COMPANY_PREFIXES[type], n);
-        const suf = pick(COMPANY_SUFFIXES[type], i);
+        const isWholesaler = i % 2 === 0;
+        const suffixes = isWholesaler ? WHOLESALER_SUFFIXES[type] : BUYER_SUFFIXES[type];
+        const suf = pick(suffixes, i);
         const companyName = `${pre} ${suf}`.trim();
         const primaryOwner = `Owner${n}`;
         const secondaryOwner = `Partner${n}`;
@@ -94,15 +105,41 @@ async function run() {
       console.log('Trade relations already seeded.');
     } else {
       console.log('Inserting trade relations...');
-      const types = await client.query('SELECT id, business_type, location FROM msme_master');
+      const types = await client.query('SELECT id, business_type, location, company_name FROM msme_master');
       const companies = types.rows;
+
+      function isWholesalerName(row) {
+        const suffixes = WHOLESALER_SUFFIXES[row.business_type] || [];
+        return suffixes.some((s) => row.company_name && row.company_name.includes(s));
+      }
+      const wholesalers = companies.filter(isWholesalerName);
+      const buyers = companies.filter((c) => !isWholesalerName(c));
+      if (wholesalers.length === 0 || buyers.length === 0) {
+        console.warn('Need both wholesaler- and buyer-style companies. Using all companies for both roles.');
+      }
+      const sellerPool = wholesalers.length > 0 ? wholesalers : companies;
+      const buyerPool = buyers.length > 0 ? buyers : companies;
+
+      const sellersByType = {};
+      const buyersByType = {};
+      for (const t of BUSINESS_TYPES) {
+        sellersByType[t] = sellerPool.filter((c) => c.business_type === t);
+        buyersByType[t] = buyerPool.filter((c) => c.business_type === t);
+      }
+
       let inserted = 0;
       for (let r = 0; r < 350; r++) {
-        const buyer = companies[randomBetween(0, companies.length - 1)];
-        let seller = companies[randomBetween(0, companies.length - 1)];
-        if (buyer.id === seller.id) continue;
-        const sellerType = seller.business_type;
-        const productName = pick(PRODUCTS_BY_TYPE[sellerType], r + seller.id);
+        const businessType = BUSINESS_TYPES[r % BUSINESS_TYPES.length];
+        const sellersOfType = sellersByType[businessType] || [];
+        const buyersOfType = buyersByType[businessType] || [];
+        if (sellersOfType.length === 0 || buyersOfType.length === 0) continue;
+        const seller = sellersOfType[randomBetween(0, sellersOfType.length - 1)];
+        let buyer = buyersOfType[randomBetween(0, buyersOfType.length - 1)];
+        if (buyer.id === seller.id) {
+          buyer = buyersOfType.find((b) => b.id !== seller.id) || buyer;
+          if (buyer.id === seller.id) continue;
+        }
+        const productName = pick(PRODUCTS_BY_TYPE[businessType], r + seller.id);
         const demand = randomBetween(100, 5000);
         const value = demand * randomBetween(10, 200);
         const locationMatch = buyer.location === seller.location;
@@ -113,7 +150,7 @@ async function run() {
         );
         inserted++;
       }
-      console.log(`Inserted ${inserted} trade relations.`);
+      console.log(`Inserted ${inserted} trade relations (same business_type per relation: FMCG–FMCG, clothing–clothing, etc.).`);
     }
 
     console.log('Seed completed.');

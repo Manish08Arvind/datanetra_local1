@@ -39,10 +39,23 @@ export default function DashboardPage() {
     <div className="grid-2">
       <section className="card">
         <h2>MSME Opportunity Dashboard</h2>
-        <p className="muted">
-          Company: <strong>{data.company.company_name}</strong> ({data.company.udhayam_id}) –{' '}
-          {data.company.business_type} in {data.company.location}
-        </p>
+        <div className="company-details-block">
+          <p className="muted" style={{ marginBottom: '0.5rem' }}>
+            <strong>{data.company.company_name}</strong> ({data.company.udhayam_id})
+          </p>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {data.company.sector_label || data.company.business_type} · {data.company.location}
+          </p>
+          {(data.company.primary_owner || data.company.secondary_owner || data.company.email || data.company.mobile_number || data.company.gstin) && (
+            <ul className="company-details-list">
+              {data.company.primary_owner && <li>Primary owner: {data.company.primary_owner}</li>}
+              {data.company.secondary_owner && <li>Secondary owner: {data.company.secondary_owner}</li>}
+              {data.company.email && <li>Email: {data.company.email}</li>}
+              {data.company.mobile_number && <li>Contact: {data.company.mobile_number}</li>}
+              {data.company.gstin && <li>GSTIN: {data.company.gstin}</li>}
+            </ul>
+          )}
+        </div>
 
         <h3>Demand for your products</h3>
         <div className="chips">
@@ -59,29 +72,66 @@ export default function DashboardPage() {
 
         <div className="grid-2-inner">
           <div>
-            <h3>Buy raw materials from</h3>
+            <h3>
+              {data.company.sector_label || data.company.business_type} wholesalers – buy raw materials
+            </h3>
+            <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+              Wholesalers in your sector from whom you can source raw materials.
+            </p>
             <ul className="list">
-              {data.buy_from.map((s, idx) => (
+              {(data.sector_wholesalers && data.sector_wholesalers.length > 0
+                ? data.sector_wholesalers
+                : data.buy_from || []
+              ).map((s, idx) => (
                 <li key={idx}>
                   <strong>{s.supplier_name}</strong> – {s.location}
+                  {s.product_name && (
+                    <>
+                      <br />
+                      <span className="muted">Product: {s.product_name}</span>
+                    </>
+                  )}
                   <br />
-                  Contact: {s.contact_number}
+                  Contact: {s.contact_number || '—'}
                 </li>
               ))}
             </ul>
+            {(!data.sector_wholesalers || data.sector_wholesalers.length === 0) && (data.buy_from || []).length === 0 && (
+              <p className="muted">No wholesalers found for your sector yet. Use the chatbot below to ask for suppliers.</p>
+            )}
           </div>
           <div>
-            <h3>Sell your products to</h3>
+            <h3>Companies in need of your products</h3>
+            <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+              Companies looking for the products your company sells.
+            </p>
             <ul className="list">
-              {data.sell_to.map((b, idx) => (
+              {(data.sell_to || []).map((b, idx) => (
                 <li key={idx}>
                   <strong>{b.buyer_name}</strong> – {b.location}
                   <br />
-                  Demand: {b.estimated_monthly_demand} units · Local:{' '}
+                  <span className="muted">Needs: {b.product_name}</span>
+                  <br />
+                  Demand: {b.estimated_monthly_demand} units/month · Same location:{' '}
                   {b.location_match ? 'Yes' : 'No'}
+                  {b.email && (
+                    <>
+                      <br />
+                      Email: {b.email}
+                    </>
+                  )}
+                  {b.mobile_number && (
+                    <>
+                      <br />
+                      Contact: {b.mobile_number}
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
+            {(!data.sell_to || data.sell_to.length === 0) && (
+              <p className="muted">No companies in need of your products yet. Demand will appear here as more trade relations are added.</p>
+            )}
           </div>
         </div>
       </section>

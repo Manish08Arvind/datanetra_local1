@@ -12,7 +12,7 @@ import bcrypt from 'bcryptjs';
 import { generateStoryDeck } from './storyDeck.js';
 import { generateStoryFlowPdf } from './storyFlowPdf.js';
 import { parseAndAnalyze } from './analyticsParser.js';
-import { askOllama, isOllamaConfigured } from './ollamaService.js';
+import { askOllama, isOllamaConfigured, filterOpportunityLists } from './ollamaService.js';
 import { runForecast } from './forecastService.js';
 
 dotenv.config();
@@ -396,29 +396,46 @@ app.get('/dashboard/overview', authMiddleware, async (req, res) => {
     }
     const company = userRes.rows[0];
 
-    // Simple demand summary using trade relations
+    const businessType = company.business_type || '';
+
+    // Demand summary: only buyers in same sector (same business_type)
     const demandRes = await query(
-      `SELECT product_name,
-              SUM(estimated_monthly_demand) AS total_demand_units,
-              COUNT(DISTINCT buyer_msme_id) AS potential_buyers,
-              SUM(CASE WHEN location_match THEN 1 ELSE 0 END) AS local_buyers
-       FROM msme_trade_relations
-       WHERE seller_msme_id = $1
-       GROUP BY product_name`,
-      [company.id]
+      `SELECT tr.product_name,
+              SUM(tr.estimated_monthly_demand) AS total_demand_units,
+              COUNT(DISTINCT tr.buyer_msme_id) AS potential_buyers,
+              SUM(CASE WHEN tr.location_match THEN 1 ELSE 0 END) AS local_buyers
+       FROM msme_trade_relations tr
+       JOIN msme_master b ON tr.buyer_msme_id = b.id
+       WHERE tr.seller_msme_id = $1 AND b.business_type = $2
+       GROUP BY tr.product_name`,
+      [company.id, businessType]
     );
 
     const buyFromRes = await query(
       `SELECT tr.product_name,
               s.company_name AS supplier_name,
               s.location,
+              s.mobile_number AS contact_number,
+              s.business_type AS supplier_business_type
+       FROM msme_trade_relations tr
+       JOIN msme_master s ON tr.seller_msme_id = s.id
+       WHERE tr.buyer_msme_id = $1 AND s.business_type = $2
+       ORDER BY tr.estimated_monthly_value DESC
+       LIMIT 20`,
+      [company.id, businessType]
+    );
+
+    const sectorWholesalersRes = await query(
+      `SELECT tr.product_name,
+              s.company_name AS supplier_name,
+              s.location,
               s.mobile_number AS contact_number
        FROM msme_trade_relations tr
        JOIN msme_master s ON tr.seller_msme_id = s.id
-       WHERE tr.buyer_msme_id = $1
+       WHERE tr.buyer_msme_id = $1 AND s.business_type = $2
        ORDER BY tr.estimated_monthly_value DESC
-       LIMIT 10`,
-      [company.id]
+       LIMIT 15`,
+      [company.id, businessType]
     );
 
     const sellToRes = await query(
@@ -426,26 +443,51 @@ app.get('/dashboard/overview', authMiddleware, async (req, res) => {
               b.company_name AS buyer_name,
               b.location,
               b.email,
+              b.mobile_number,
               tr.estimated_monthly_demand,
               tr.location_match
        FROM msme_trade_relations tr
        JOIN msme_master b ON tr.buyer_msme_id = b.id
-       WHERE tr.seller_msme_id = $1
+       WHERE tr.seller_msme_id = $1 AND b.business_type = $2
        ORDER BY tr.estimated_monthly_demand DESC
-       LIMIT 10`,
-      [company.id]
+       LIMIT 15`,
+      [company.id, businessType]
     );
+
+    const sectorLabel = (company.business_type || '').charAt(0).toUpperCase() + (company.business_type || '').slice(1);
+
+    let buyFrom = buyFromRes.rows;
+    let sectorWholesalers = sectorWholesalersRes.rows;
+    let sellTo = sellToRes.rows;
+
+    try {
+      const filtered = await filterOpportunityLists(businessType, buyFrom, sellTo);
+      if (filtered) {
+        buyFrom = filtered.buy_from;
+        sellTo = filtered.sell_to;
+        sectorWholesalers = filtered.buy_from;
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'test') console.warn('LLM opportunity filter failed, using unfiltered lists:', e.message);
+    }
 
     return res.json({
       company: {
         udhayam_id: company.udhayam_id,
         company_name: company.company_name,
         business_type: company.business_type,
-        location: company.location
+        location: company.location,
+        sector_label: sectorLabel,
+        primary_owner: company.primary_owner,
+        secondary_owner: company.secondary_owner,
+        email: company.email,
+        mobile_number: company.mobile_number,
+        gstin: company.gstin
       },
       product_demand_summary: demandRes.rows,
-      buy_from: buyFromRes.rows,
-      sell_to: sellToRes.rows
+      buy_from: buyFrom,
+      sector_wholesalers: sectorWholesalers,
+      sell_to: sellTo
     });
   } catch (err) {
     console.error(err);
