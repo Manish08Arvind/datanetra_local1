@@ -1504,8 +1504,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const frontendDist = process.env.FRONTEND_DIST || (isProduction ? path.join(__dirname, '..', '..', 'frontend', 'dist') : null);
 if (frontendDist && fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/auth') || req.path.startsWith('/dashboard') || req.path.startsWith('/analytics') || req.path.startsWith('/admin') || req.path.startsWith('/chat') || req.path.startsWith('/upload') || req.path.startsWith('/rules') || req.path.startsWith('/health')) return next();
+  app.get('*', (req, res) => {
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 } else {
